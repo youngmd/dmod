@@ -27,3 +27,17 @@ export -f dmod
 
 ## Usage
 
+Usage: dmod [switches] [subcommand] [modulename]
+
+Switches:
+ - -V : Print dmod version information and exit
+ - -f : Force module unload, ignoring dependencies
+
+Subcommands:
+ + load : Recursively loads the requested module and all modules that it depends on
+ + restore : Saves the list of currently loaded modules and creates a bookmark to allow rapid switching between environmental sets
+ + help : Displays the available dmod commands and their descriptors
+ + unload : Unloads the requested module, while checking to ensure that no other loaded modules depend on it
+ + avail : Returns a list of available modules that include the provided string anywhere in the module name
+ + bookmarks : List all saved bookmarks. Use with -v to show the modules within each bookmark
+ + save : Saves the list of currently loaded modules and creates a bookmark to allow rapid switching between environmental sets
