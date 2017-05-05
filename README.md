@@ -16,7 +16,8 @@ Clone this repository and make sure dModule.py is flagged as executable.
 
 Add the following to your .bashrc (define or replace $DMODPATH with the path to dModule.py):
 
-```dmod() {  DMODULECMD="$DMODPATH";
+```
+dmod() {  DMODULECMD="$DMODPATH";
  eval `${DMODULECMD} $*`
 }
 export -f dmod
