@@ -10,7 +10,10 @@ dmod functions as a wrapper for the module command used in many hpc environments
 
 ## Installation
 
-Clone this repository and chmod+x 
+Clone this repository and make sure dModule.py is flagged as executable. 
+
+### bash
+
 Add the following to your .bashrc (define or replace $DMODPATH with the path to dModule.py):
 
 ```dmod() {  DMODULECMD="$DMODPATH";
@@ -18,6 +21,8 @@ Add the following to your .bashrc (define or replace $DMODPATH with the path to 
 }
 export -f dmod
 ```
+### csh/tcsh
+
 
 ## Usage
 
