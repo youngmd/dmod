@@ -2,6 +2,8 @@
 
 import os, sys
 import subprocess
+#import warnings
+#warnings.filterwarnings("ignore")
 
 version = "0.2"
 
@@ -90,14 +92,27 @@ def get_all_modules():
         if l.strip().endswith(':'):
             continue
         else:
+            if "(default)" in l:
+                l = l.strip("(default)")
             modules.append(l.strip())
     return modules
 
 def search_mods(modname):
     modules = get_all_modules()
+    count = 0
     for i in modules:
-        if modname in i:
-            print 'echo %s;' % i
+        if modname.lower() in i.lower():
+            print "echo '%s';" % i
+            count += 1
+    if not count:
+        print 'echo ; echo No matches found for %s!;' % modname
+        from fuzzywuzzy import process
+        bestmatch = process.extractBests(modname, modules, score_cutoff=60, limit=10)
+        if len(bestmatch) > 0:
+            print "echo --------; echo Closest matches:;"
+            for b in bestmatch:
+                print "echo '%s';" % b[0]
+        print "echo ; echo ;"
 
 def load_mod(modname):
     loaded = get_loaded()
@@ -107,16 +122,20 @@ def load_mod(modname):
     for d in deps:
         load(d, loaded)
 
-def unload_mod(modname, force=False):
+def unload_mod(modname):
+    global switches
     loaded = get_loaded()
-    if force:
+    if switches['-f']['setting']:
+        print 'echo Force unloading %s;' % modname
         print 'module unload %s; ' % modname
+        return
     for l in loaded:
         deps, cons = get_mod_reqs(l)
         for d in deps:
-            if d in modname or modname in d:
+            if modname.startswith(d) or d.startswith(modname):
                 print "echo %s requires %s, aborting unload;  echo Hint: use -f to force unload;" % (l, modname)
-                sys.exit(1)
+                return
+    print 'module unload %s; ' % modname
 
 def help_mod(helpcmd=None):
     print "echo ; echo dmod version %s;" % version
@@ -155,6 +174,8 @@ def bookmark_env(name=None):
     print "echo To see all saved bookmarks call dmod bookmarks;"
 
 def restore_env(name=None):
+    global switches
+    switches['-f']['setting'] = True
     if name is None:
         print "echo No bookmark name provided, aborting;"
         return
@@ -177,7 +198,7 @@ def restore_env(name=None):
                 keep = True
                 break
         if not keep:
-            unload_mod(l, True)
+            unload_mod(l)
 
     print "echo Module environment %s restored;" % name
 
@@ -235,14 +256,31 @@ avail_cmds = {
     }
 
 def main():
-    if sys.argv[1] not in avail_cmds:
-        print 'echo Invalid module command;'
+    global switches
+    modindex = 2
+    for idx,s in enumerate(sys.argv[1:]):
+        if s in switches:
+            switches[s]['setting'] = True
+            continue
+        elif s not in avail_cmds:
+            print 'echo Unrecognized command: %s;' % s
+            return
+        else:
+            modfunc = avail_cmds[s]['func']
+            modindex = idx + 2
+            break
+
+    if switches['-V']['setting']:
+        print "echo dmod v%s;" % version
         return
-    else:
-        modfunc = avail_cmds[sys.argv[1]]['func']
+    # if sys.argv[1] not in avail_cmds:
+    #     print 'echo Invalid module command;'
+    #     return
+    # else:
+    #     modfunc = avail_cmds[sys.argv[1]]['func']
 
     try:
-        modname = sys.argv[2]
+        modname = sys.argv[modindex]
     except:
         modname = None
 
