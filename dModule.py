@@ -7,6 +7,8 @@ import subprocess
 
 version = "0.2"
 
+all_modules = []
+
 def modcmds(cmd):
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     out, err = process.communicate()
@@ -71,6 +73,18 @@ def exact_mod(modname):
     raise Exception('Module requested not found by module system: %s' % modname)
 
 def load(modname, loaded=get_loaded()):
+    global all_modules
+    if all_modules == []:
+        get_all_modules()
+    found = False
+    for m in all_modules:
+        if m.startswith(modname):
+            found = True
+            break
+    if not found:
+        print 'echo Cannot load %s, looking for closest matches;' % modname
+        search_mods(modname)
+        return
     exact = exact_mod(modname)
     for l in loaded:
         if exact:
@@ -84,30 +98,33 @@ def load(modname, loaded=get_loaded()):
     return
 
 def get_all_modules():
+    global all_modules
     cmd = "module -t avail"
     outlines = modcmds(cmd)
 
-    modules = []
+    all_modules = []
     for l in outlines:
         if l.strip().endswith(':'):
             continue
         else:
             if "(default)" in l:
                 l = l.strip("(default)")
-            modules.append(l.strip())
-    return modules
+            all_modules.append(l.strip())
+    return
 
 def search_mods(modname):
-    modules = get_all_modules()
+    global all_modules
+    if all_modules == []:
+        get_all_modules()
     count = 0
-    for i in modules:
+    for i in all_modules:
         if modname.lower() in i.lower():
             print "echo '%s';" % i
             count += 1
     if not count:
         print 'echo ; echo No matches found for %s!;' % modname
         from fuzzywuzzy import process
-        bestmatch = process.extractBests(modname, modules, score_cutoff=60, limit=10)
+        bestmatch = process.extractBests(modname, all_modules, score_cutoff=60, limit=10)
         if len(bestmatch) > 0:
             print "echo --------; echo Closest matches:;"
             for b in bestmatch:
@@ -126,7 +143,7 @@ def unload_mod(modname):
     global switches
     loaded = get_loaded()
     if switches['-f']['setting']:
-        print 'echo Force unloading %s;' % modname
+        #print 'echo Force unloading %s;' % modname
         print 'module unload %s; ' % modname
         return
     for l in loaded:
@@ -151,6 +168,37 @@ def help_mod(helpcmd=None):
     for key, item in avail_cmds.iteritems():
         print "echo '\t'+ %s : %s ;" % (key, item['desc'])
     print "echo ;"
+
+def depends_on(modname):
+    print "echo ; echo Building dependency tree...;"
+    global all_modules
+    if all_modules == []:
+        get_all_modules()
+    try:
+        exact_mod(modname)
+    except:
+        print "echo ; echo Cannot evaluate dependencies of %s, module does not exist" % modname
+        return
+
+    print "echo Looking for modules which depend on %s; echo -----------;" % modname
+
+    count = 0
+    for m in all_modules:
+        try:
+            res = get_mod_reqs(m)
+        except:
+            continue
+        deps = res[0]
+        for d in deps:
+            if d.startswith(modname):
+                print "echo %s;" % m
+                count += 1
+                break
+
+    if not count:
+        print "echo No modules depend on %s" % modname
+
+
 
 def bookmark_env(name=None):
     if name is None:
@@ -211,6 +259,11 @@ def bookmarks(foo):
         for i in os.listdir(dmod_dir):
             print "echo %s;" % i
 
+def default_cmd():
+    print 'echo Unrecognized dmod command, passing to modules; echo Call dmod help to see available dmod commands; echo --------;'
+    print 'module %s' % ' '.join(sys.argv[1:])
+    return
+
 switches = {
     '-f' : {
                 'name': 'force',
@@ -252,18 +305,23 @@ avail_cmds = {
     'bookmarks' : {
                 'func': bookmarks,
                 'desc': "List all saved bookmarks.  Use with -v to show the modules within each bookmark"
+            },
+    'depends' : {
+                'func': depends_on,
+                'desc': "List all modules which depend on the provided module name"
             }
     }
 
 def main():
     global switches
     modindex = 2
+    modfunc = None
     for idx,s in enumerate(sys.argv[1:]):
         if s in switches:
             switches[s]['setting'] = True
             continue
         elif s not in avail_cmds:
-            print 'echo Unrecognized command: %s;' % s
+            default_cmd()
             return
         else:
             modfunc = avail_cmds[s]['func']
@@ -272,6 +330,9 @@ def main():
 
     if switches['-V']['setting']:
         print "echo dmod v%s;" % version
+        return
+
+    if not modfunc:
         return
     # if sys.argv[1] not in avail_cmds:
     #     print 'echo Invalid module command;'
