@@ -2,8 +2,8 @@
 
 import os, sys
 import subprocess
-#import warnings
-#warnings.filterwarnings("ignore")
+import warnings
+warnings.filterwarnings("ignore")
 
 version = "0.2"
 
@@ -12,16 +12,16 @@ all_modules = []
 def modcmds(cmd):
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
     out, err = process.communicate()
-    outlines = err.decode('ascii').splitlines()
+    outlines = err.decode('utf-8').splitlines()
     return outlines
 
 def get_mod_reqs(modname):
     cmd = 'module show %s' % modname
     outlines = modcmds(cmd)
-    deps = []
-    cons = []
+    deps = [""]
+    cons = [""]
     for l in outlines:
-        if not l.startswith('prereq') or l.startswith('conflict'):
+        if not l.startswith('prereq') and not l.startswith('conflict'):
             continue
         else:
             vals = l.split()
@@ -33,6 +33,15 @@ def get_mod_reqs(modname):
                     cons.append(i)
     return [deps, cons]
 
+def get_mod_path(modname):
+    cmd = "module -v show %s" % modname
+    outlines = modcmds(cmd)
+    for l in outlines:
+        if modname in l:
+            if l.strip().endswith(modname + ":"):
+                return l.strip().strip(':')
+    return None
+
 def update_resolved(resolved, newmods):
     for i in newmods:
         if i not in resolved:
@@ -41,8 +50,9 @@ def update_resolved(resolved, newmods):
 
 def resolve_deps(mods, resolved = []):
     for i in mods:
-        d2, cons = get_mod_reqs(i)
-        if len(d2) == 0:
+        reqs = get_mod_reqs(i)
+        d2 = reqs[0]
+        if len(d2) == 0 or d2[0] == '':
             resolved = update_resolved(resolved, [i])
         else:
             resolved = update_resolved(resolve_deps(d2, resolved), resolved)
@@ -112,15 +122,30 @@ def get_all_modules():
             all_modules.append(l.strip())
     return
 
-def search_mods(modname):
+def search_mods(modname=None):
+    global switches
+    if not modname and not switches['-c']['setting']:
+        print 'module avail'
+        return
     global all_modules
     if all_modules == []:
         get_all_modules()
     count = 0
+    export = {}
     for i in all_modules:
-        if modname.lower() in i.lower():
-            print "echo '%s';" % i
-            count += 1
+        try:
+            if not modname or modname.lower() in i.lower():
+                if not switches['-c']['setting']:
+                    print "echo '%s';" % i
+                else:
+                    reqs = get_mod_reqs(i)
+                    modpath = get_mod_path(i)
+                    if not modpath:
+                        modpath = ""
+                    export[i] = [modpath, reqs[0], reqs[1]]
+                count += 1
+        except:
+            print "echo %s;" % i
     if not count:
         print 'echo ; echo No matches found for %s!;' % modname
         from fuzzywuzzy import process
@@ -130,6 +155,15 @@ def search_mods(modname):
             for b in bestmatch:
                 print "echo '%s';" % b[0]
         print "echo ; echo ;"
+    if len(export) != 0:
+        print "echo ; echo Writing results to dmod_avail.csv;"
+        with open("dmod_avail.csv", "wb") as csv_out:
+            # first the header
+            csv_out.write("Module,Path,Dependencies,Conflicts\n")
+            for key, a_list in sorted(export.items(), key=lambda row: row[0]):
+                x = [key, ]
+                x.extend(a_list)
+                csv_out.write("%s,%s,%s,%s\n" % (key.encode("utf-8"), a_list[0].encode("utf-8"), " ".join(a_list[1]).encode("utf-8"), " ".join(a_list[2]).encode("utf-8")))
 
 def load_mod(modname):
     loaded = get_loaded()
@@ -147,8 +181,13 @@ def unload_mod(modname):
         print 'module unload %s; ' % modname
         return
     for l in loaded:
-        deps, cons = get_mod_reqs(l)
+        reqs = get_mod_reqs(l)
+        #print "echo %s, %s;"  % (l, reqs)
+        deps = reqs[0]
+        #print "echo %s;" % (deps)
         for d in deps:
+            if d == '':
+                continue
             if modname.startswith(d) or d.startswith(modname):
                 print "echo %s requires %s, aborting unload;  echo Hint: use -f to force unload;" % (l, modname)
                 return
@@ -274,6 +313,11 @@ switches = {
                 'name': 'version',
                 'setting': False,
                 'desc': "Print dmod version information and exit"
+            },
+    '-c' : {
+                'name': 'csv',
+                'setting': False,
+                'desc': "Export detailed module info in csv format \(use with avail\)"
             }
     }
 
@@ -304,7 +348,7 @@ avail_cmds = {
             },
     'bookmarks' : {
                 'func': bookmarks,
-                'desc': "List all saved bookmarks.  Use with -v to show the modules within each bookmark"
+                'desc': "List all saved bookmarks"
             },
     'depends' : {
                 'func': depends_on,
